@@ -2,7 +2,6 @@
 
 from .config import config
 from .discord import DiscordIpcService
-from .imgur import uploadToImgur
 from config.constants import name, plexClientID
 from plexapi.alert import AlertListener
 from plexapi.media import Genre, Guid
@@ -18,6 +17,7 @@ import requests
 import threading
 import time
 import urllib.parse
+from .tmdb import get_tmdb_poster_url
 
 def initiateAuth() -> tuple[str, str, str]:
 	response = requests.post("https://plex.tv/api/v2/pins.json?strong=true", headers = {
@@ -153,14 +153,6 @@ class PlexAlertListener(threading.Thread):
 			self.logger.exception("An unexpected error occured in the Plex alert handler")
 			self.disconnectRpc()
 
-	def uploadToImgur(self, thumb: str) -> Optional[str]:
-		thumbUrl = getCacheKey(thumb)
-		if not thumbUrl or not isinstance(thumbUrl, str):
-			self.logger.debug("Uploading image to Imgur")
-			thumbUrl = uploadToImgur(self.server.url(thumb, True))
-			setCacheKey(thumb, thumbUrl)
-		return thumbUrl
-
 	def handleAlert(self, alert: models.plex.Alert) -> None:
 		if alert["type"] != "playing" or "PlaySessionStateNotification" not in alert:
 			return
@@ -242,22 +234,26 @@ class PlexAlertListener(threading.Thread):
 			stateStrings.append(formatSeconds(item.duration / 1000))
 		largeText, thumb, smallText, smallThumb = "", "", "", ""
 		if mediaType == "movie":
+			tmdb_title = item.title.split(' (')[0] if item.title else ""
 			title = shortTitle = item.title
 			if config["display"]["year"] and item.year:
-				title += f" ({item.year})"
+				stateStrings.append(str(item.year))
 			if config["display"]["genres"] and item.genres:
 				genres: list[Genre] = item.genres[:3]
 				stateStrings.append(f"{', '.join(genre.tag for genre in genres)}")
 			thumb = item.thumb
+			self.logger.info(f"Calling get_tmdb_poster_url for movie: title={tmdb_title or item.title or ''}, year={getattr(item, 'year', None)}, guids={[g.id for g in item.guids] if hasattr(item, 'guids') else []}")
 		elif mediaType == "episode":
+			tmdb_title = item.grandparentTitle.split(' (')[0] if item.grandparentTitle else ""
 			title = shortTitle = item.grandparentTitle
 			if config["display"]["year"]:
 				grandparent = self.server.fetchItem(item.grandparentRatingKey)
 				if grandparent.year:
-					title += f" ({grandparent.year})"
+					stateStrings.append(str(grandparent.year))
 			stateStrings.append(f"S{item.parentIndex:02}E{item.index:02}")
 			stateStrings.append(item.title)
 			thumb = item.grandparentThumb
+			self.logger.info(f"Calling get_tmdb_poster_url for episode: title={tmdb_title or item.grandparentTitle or ''}, year={getattr(item, 'year', None)}, guids={[g.id for g in item.guids] if hasattr(item, 'guids') else []}")
 		elif mediaType == "live_episode":
 			title = shortTitle = item.grandparentTitle
 			if item.title != item.grandparentTitle:
@@ -289,8 +285,33 @@ class PlexAlertListener(threading.Thread):
 			if not config["display"]["statusIcon"]:
 				stateStrings.append(state.capitalize())
 		stateText = " · ".join(stateString for stateString in stateStrings if stateString)
-		thumbUrl = self.uploadToImgur(thumb) if thumb and config["display"]["posters"]["enabled"] else ""
-		smallThumbUrl = self.uploadToImgur(smallThumb) if smallThumb and config["display"]["posters"]["enabled"] else ""
+		thumbUrl = ""
+		smallThumbUrl = ""
+		if config["display"]["posters"]["enabled"]:
+			if mediaType == "movie":
+				guids = [g.id for g in item.guids] if hasattr(item, 'guids') else []
+				self.logger.info(f"Calling get_tmdb_poster_url for movie: title={tmdb_title or item.title or ''}, year={getattr(item, 'year', None)}, guids={guids}")
+				thumbUrl = get_tmdb_poster_url(
+					guids=guids,
+					title=tmdb_title or item.title or "",
+					year=getattr(item, 'year', None),
+					media_type="movie"
+				) or ""
+			elif mediaType == "episode":
+				grandparent = self.server.fetchItem(item.grandparentRatingKey)
+				guids = [g.id for g in grandparent.guids] if hasattr(grandparent, 'guids') else []
+				self.logger.info(f"Calling get_tmdb_poster_url for episode: title={tmdb_title or grandparent.title or ''}, year={getattr(grandparent, 'year', None)}, guids={guids}")
+				thumbUrl = get_tmdb_poster_url(
+					guids=guids,
+					title=tmdb_title or grandparent.title or "",
+					year=getattr(grandparent, 'year', None),
+					media_type="tv"
+				) or ""
+			# For music or other types, fallback to original thumb (no TMDB)
+			elif thumb:
+				thumbUrl = self.server.url(thumb, True)
+			if smallThumb:
+				smallThumbUrl = self.server.url(smallThumb, True)
 		activity: models.discord.Activity = {
 			"type": mediaTypeActivityTypeMap[mediaType],
 			"details": truncate(title, 120),
@@ -316,7 +337,7 @@ class PlexAlertListener(threading.Thread):
 				guidsRaw = item.guids
 			elif mediaType == "episode":
 				guidsRaw = self.server.fetchItem(item.grandparentRatingKey).guids
-			guids: dict[str, str] = { guidSplit[0]: guidSplit[1] for guidSplit in [guid.id.split("://") for guid in guidsRaw] if len(guidSplit) > 1 }
+			guids: list[str] = [guid.id for guid in guidsRaw]
 			buttons: list[models.discord.ActivityButton] = []
 			for button in config["display"]["buttons"]:
 				if "mediaTypes" in button and mediaType not in button["mediaTypes"]:
@@ -329,25 +350,25 @@ class PlexAlertListener(threading.Thread):
 				guidType = buttonTypeGuidTypeMap.get(buttonType)
 				if not guidType:
 					continue
-				guid = guids.get(guidType)
+				guid = next((guid for guid in guids if guid.startswith(f"{guidType}://")), None)
 				if not guid:
 					continue
 				url = ""
 				if buttonType == "imdb":
-					url = f"https://www.imdb.com/title/{guid}"
+					url = f"https://www.imdb.com/title/{guid.split('://')[1]}"
 				elif buttonType == "tmdb":
 					tmdbPathSegment = "movie" if mediaType == "movie" else "tv"
-					url = f"https://www.themoviedb.org/{tmdbPathSegment}/{guid}"
+					url = f"https://www.themoviedb.org/{tmdbPathSegment}/{guid.split('://')[1]}"
 				elif buttonType == "thetvdb":
 					theTvdbPathSegment = "movie" if mediaType == "movie" else "series"
-					url = f"https://www.thetvdb.com/dereferrer/{theTvdbPathSegment}/{guid}"
+					url = f"https://www.thetvdb.com/dereferrer/{theTvdbPathSegment}/{guid.split('://')[1]}"
 				elif buttonType == "trakt":
 					idType = "movie" if mediaType == "movie" else "show"
-					url = f"https://trakt.tv/search/tmdb/{guid}?id_type={idType}"
+					url = f"https://trakt.tv/search/tmdb/{guid.split('://')[1]}?id_type={idType}"
 				elif buttonType == "letterboxd" and mediaType == "movie":
-					url = f"https://letterboxd.com/tmdb/{guid}"
+					url = f"https://letterboxd.com/tmdb/{guid.split('://')[1]}"
 				elif buttonType == "musicbrainz":
-					url = f"https://musicbrainz.org/track/{guid}"
+					url = f"https://musicbrainz.org/track/{guid.split('://')[1]}"
 				if url:
 					buttons.append({ "label": label, "url": url })
 			if buttons:

@@ -24,3 +24,4 @@ uid = int(os.environ.get("DRPP_UID", "-1"))
 gid = int(os.environ.get("DRPP_GID", "-1"))
 containerCwd = "/app"
 noRuntimeDirChown = os.environ.get("DRPP_NO_RUNTIME_DIR_CHOWN", "") == "true"
+tmdbApiKey = os.environ.get("DRPP_TMDB_API_KEY", "")

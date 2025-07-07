@@ -46,7 +46,6 @@ if not noPipInstall:
 from config.constants import dataDirectoryPath, logFilePath, name, version, isInteractive, plexServerNameInput
 from core.config import config, loadConfig, saveConfig
 from core.discord import DiscordIpcService
-from core.imgur import uploadToImgur
 from core.plex import PlexAlertListener, initiateAuth, getAuthToken
 from models.discord import ActivityType
 from typing import Optional
@@ -136,7 +135,7 @@ def testIpc(pipeNumber: int) -> None:
 		"state": "state",
 		"assets": {
 			"large_text": "large_text",
-			"large_image": uploadToImgur("https://placehold.co/256x256/EEE/333.png") or "paused",
+			"large_image": "https://placehold.co/256x256/EEE/333.png",
 			"small_text": "small_text",
 			"small_image": "playing",
 		},

@@ -25,9 +25,9 @@ config: models.config.Config = {
 		"paused": False,
 		"posters": {
 			"enabled": False,
-			"imgurClientID": "",
 			"maxSize": 256,
 			"fit": True,
+			"tmdbApiKey": "",
 		},
 		"buttons": [],
 	},

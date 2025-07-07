@@ -6,9 +6,9 @@ class Logging(TypedDict):
 
 class Posters(TypedDict):
 	enabled: bool
-	imgurClientID: str
 	maxSize: int
 	fit: bool
+	tmdbApiKey: str
 
 class Button(TypedDict):
 	label: str

@@ -7,6 +7,12 @@ Discord Rich Presence for Plex is a Python script which displays your [Plex](htt
 
 ![Showcase](assets/readme/showcase.png)
 
+## About This Fork
+
+**This fork removes Imgur support and adds [TMDB (The Movie Database)](https://www.themoviedb.org/) support!**  
+Imgur dependencies have been removed and TMDB integration has been added.  
+Feel free to contribute or open issues related to TMDB support.
+
 ## Installation
 
 If you're using a Linux-based operating system, you can [run this script with Docker](#run-with-docker). Otherwise, follow these instructions:
@@ -47,9 +53,9 @@ The config file is stored in a directory named `data`.
   - `progressMode` (string, default: `bar`) - Progress/timestamp display mode. Valid modes are `off`, `elapsed` (displays elapsed time), `remaining` (displays remaining time) and `bar` (displays a progress bar). The `off` and `remaining` modes are currently broken due to a Discord bug/limitation.
   - `paused` (boolean, default: `false`) - Displays Rich Presence even while media is paused. Progress/timestamp display while paused is currently broken due to a Discord bug/limitation.
   - `posters`
-    - `enabled` (boolean, default: `false`) - Displays media posters (including album art and artist images). Requires `imgurClientID`.
-    - `imgurClientID` (string, default: `""`) - [Obtention Instructions](#obtaining-an-imgur-client-id)
-    - `maxSize` (int, default: `256`) - Maximum width and maximum height to use while downscaling posters before uploading them.
+    - `enabled` (boolean, default: `false`) - Displays media posters. TMDB is now used for poster images instead of Imgur.
+    - `tmdbApiKey` (string, optional) - TMDB API key for fetching poster images.
+    - `maxSize` (int, default: `256`) - Maximum width and maximum height to use while downscaling posters before displaying them.
     - `fit` (boolean, default: `true`) - Fits posters inside a square while maintaining the original aspect ratio. Otherwise, Discord crops posters into a square.
   - `buttons` (list) - [Information](#buttons)
     - `label` (string) - The label to be displayed on the button.
@@ -64,11 +70,12 @@ The config file is stored in a directory named `data`.
     - `whitelistedLibraries` (list, optional) - If set, alerts originating from libraries that are not in this list are ignored.
     - `ipcPipeNumber` (int, optional) - A number in the range of `0-9` to specify the Discord IPC pipe to connect to. Defaults to `-1`, which specifies that the first existing pipe in the range should be used. When a Discord client is launched, it binds to the first unbound pipe number, which is typically `0`.
 
-### Obtaining an Imgur client ID
+### Obtaining a TMDB API Key
 
-1. Go to Imgur's [application registration page](https://api.imgur.com/oauth2/addclient).
-2. Enter any name for the application and pick "OAuth 2 authorization without a callback URL" as the authorisation type.
-3. Submit the form to obtain your application's client ID.
+1. Go to [TMDB's account signup page](https://www.themoviedb.org/signup) and create an account if you don't have one.
+2. Once logged in, navigate to your [TMDB account settings](https://www.themoviedb.org/settings/api).
+3. Click on the "Create" button under the API section to request an API key.
+4. Add your TMDB API key to the configuration file as required by this fork.
 
 ### Buttons
 
@@ -108,7 +115,7 @@ display:
   paused: false
   posters:
     enabled: true
-    imgurClientID: 9e9sf637S8bRp4z
+    tmdbApiKey: YOUR_TMDB_API_KEY_HERE
     maxSize: 256
     fit: true
   buttons:
